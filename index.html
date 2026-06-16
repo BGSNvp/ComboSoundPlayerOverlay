@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Combined Overlay</title>
+  <link rel="stylesheet" href="overlay.css" />
+</head>
+<body>
+  <!-- Player card overlay (visual — hidden by default, shows for 7s when triggered) -->
+  <div id="playerCard" class="player-card" style="display:none;">
+    <div class="card-video" id="videoWrap">
+      <video id="playerVideo" autoplay muted playsinline></video>
+    </div>
+    <div class="card-info">
+      <div class="number-badge" id="playerNumber"></div>
+      <div class="player-name" id="playerName"></div>
+      <div class="stat-grid">
+        <div class="stat">
+          <span class="stat-label">Grade</span>
+          <span class="stat-value" id="playerGrade"></span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Height</span>
+          <span class="stat-value" id="playerHeight"></span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Weight</span>
+          <span class="stat-value" id="playerWeight"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const app = initializeApp({
+      apiKey: "AIzaSyABNKTrQKTiw4U78JGDFAw9eZDZM-3gK2s",
+      authDomain: "bgsn-scoreboard.firebaseapp.com",
+      projectId: "bgsn-scoreboard",
+      storageBucket: "bgsn-scoreboard.firebasestorage.app",
+      messagingSenderId: "888144845710",
+      appId: "1:888144845710:web:fe848d883391be787622df"
+    });
+    const db = getFirestore(app);
+
+    /* ========== Player Card Overlay ========== */
+    const liveRef = doc(db, "playerOverlay", "live");
+    const card = document.getElementById("playerCard");
+    let isVisible = false;
+    let autoHideTimer = null;
+    const SHOW_DURATION = 7000;
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") === "1") document.body.classList.add("demo");
+    const accentParam = params.get("accent");
+    if (accentParam) card.style.setProperty("--accent", "#" + accentParam.replace(/^#/, ""));
+
+    onSnapshot(liveRef, (snap) => {
+      const d = snap.data();
+      if (!d) return;
+
+      setText("playerName", d.name || "Player Name");
+      setText("playerNumber", "#" + (d.number || "00"));
+      setText("playerGrade", d.grade || "\u2014");
+      setText("playerHeight", d.height || "\u2014");
+      setText("playerWeight", d.weight || "\u2014");
+
+      updateVideo(d.video || "");
+      applyFieldStyles(d.styles || {});
+
+      if (d.visible && !isVisible) {
+        showCard();
+        scheduleAutoHide();
+      } else if (d.visible && isVisible) {
+        // Re-triggered while already showing — restart the 7s timer
+        scheduleAutoHide();
+      } else if (!d.visible && isVisible) {
+        clearAutoHide();
+        hideCard();
+      }
+    });
+
+    function scheduleAutoHide() {
+      clearAutoHide();
+      autoHideTimer = setTimeout(() => {
+        hideCard();
+        // Write visible:false back to Firestore so controller stays in sync
+        setDoc(liveRef, { visible: false }, { merge: true }).catch(() => {});
+      }, SHOW_DURATION);
+    }
+
+    function clearAutoHide() {
+      if (autoHideTimer) {
+        clearTimeout(autoHideTimer);
+        autoHideTimer = null;
+      }
+    }
+
+    function updateVideo(src) {
+      const videoEl = document.getElementById("playerVideo");
+      const wrap = document.getElementById("videoWrap");
+      if (src) {
+        if (!videoEl) {
+          const v = document.createElement("video");
+          v.id = "playerVideo";
+          v.autoplay = true;
+          v.muted = true;
+          v.playsInline = true;
+          wrap.prepend(v);
+          wrap.classList.remove("no-video");
+          v.src = src;
+          v.load();
+        } else {
+          if (videoEl.getAttribute("src") !== src) {
+            videoEl.src = src;
+            videoEl.load();
+          }
+          wrap.classList.remove("no-video");
+        }
+      } else {
+        if (videoEl) videoEl.removeAttribute("src");
+        wrap.classList.add("no-video");
+      }
+    }
+
+    function showCard() {
+      isVisible = true;
+      card.style.display = "flex";
+      card.classList.remove("hidden");
+      card.style.animation = "none";
+      card.offsetHeight;
+      card.style.animation = "";
+    }
+
+    function hideCard() {
+      isVisible = false;
+      card.classList.add("hidden");
+      setTimeout(() => { card.style.display = "none"; }, 500);
+    }
+
+    function setText(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    }
+
+    const FIELD_MAP = {
+      name: { el: "playerName", wrap: null },
+      number: { el: "playerNumber", wrap: null },
+      grade: { el: "playerGrade", wrap: ".stat:nth-child(1)" },
+      height: { el: "playerHeight", wrap: ".stat:nth-child(2)" },
+      weight: { el: "playerWeight", wrap: ".stat:nth-child(3)" },
+    };
+
+    function applyFieldStyles(styles) {
+      Object.keys(FIELD_MAP).forEach(field => {
+        const conf = styles[field] || {};
+        const elId = FIELD_MAP[field].el;
+        const el = document.getElementById(elId);
+        const wrapSel = FIELD_MAP[field].wrap;
+        const wrap = wrapSel ? card.querySelector(wrapSel) : el;
+        if (!el || !wrap) return;
+
+        wrap.style.display = conf.hidden ? "none" : "";
+        el.style.fontSize = conf.fontSize ? conf.fontSize + "px" : "";
+        el.style.color = conf.color ? conf.color : "";
+
+        if (conf.offsetX || conf.offsetY) {
+          wrap.style.position = "relative";
+          wrap.style.left = (conf.offsetX || 0) + "px";
+          wrap.style.top = (conf.offsetY || 0) + "px";
+        } else {
+          wrap.style.position = "";
+          wrap.style.left = "";
+          wrap.style.top = "";
+        }
+      });
+    }
+
+    /* ========== Soundboard Audio Engine ========== */
+    const triggerRef = doc(db, "soundboard", "trigger");
+    let audioCtx = null;
+    let masterGain = null;
+    const bufferCache = new Map();
+    const activeSources = new Set();
+    let lastTriggerTs = 0;
+
+    function ensureAudioCtx() {
+      if (audioCtx) return;
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.9;
+        masterGain.connect(audioCtx.destination);
+      } catch (e) {
+        console.error("AudioContext failed:", e);
+      }
+    }
+
+    async function loadSound(url) {
+      if (bufferCache.has(url)) return bufferCache.get(url);
+      const resp = await fetch(url);
+      const arr = await resp.arrayBuffer();
+      ensureAudioCtx();
+      const buf = await audioCtx.decodeAudioData(arr);
+      bufferCache.set(url, buf);
+      return buf;
+    }
+
+    async function playSound(url, volume) {
+      ensureAudioCtx();
+      if (audioCtx && audioCtx.state === "suspended") {
+        try { await audioCtx.resume(); } catch (_) {}
+      }
+      try {
+        const buf = await loadSound(url);
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        const g = audioCtx.createGain();
+        g.gain.value = typeof volume === "number" ? volume : 1;
+        src.connect(g).connect(masterGain);
+        src.onended = () => activeSources.delete(src);
+        activeSources.add(src);
+        src.start(0);
+      } catch (e) {
+        const a = new Audio(url);
+        a.volume = typeof volume === "number" ? volume : 1;
+        a.play().catch(() => {});
+      }
+    }
+
+    function stopAllSounds() {
+      activeSources.forEach(src => { try { src.stop(); } catch (_) {} });
+      activeSources.clear();
+    }
+
+    onSnapshot(triggerRef, (snap) => {
+      const d = snap.data();
+      if (!d || !d.file) return;
+      if (d.ts && d.ts > lastTriggerTs) {
+        lastTriggerTs = d.ts;
+        if (d.action === "stop") {
+          stopAllSounds();
+        } else {
+          const soundUrl = d.file.startsWith("http") ? d.file : "sounds/" + d.file;
+          playSound(soundUrl, d.volume || 1);
+        }
+      }
+    });
+
+    document.addEventListener("click", () => {
+      ensureAudioCtx();
+      if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    }, { once: true });
+  </script>
+</body>
+</html>
