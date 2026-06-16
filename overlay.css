@@ -1,0 +1,171 @@
+/* ============================================================
+   Combined Overlay – player card + soundboard audio
+   Player card: vertical green-screen layout with floating info.
+   Soundboard: audio-only (no visual elements).
+   Designed for use as an OBS/YololBox Browser Source (transparent bg).
+   ============================================================ */
+
+/* ---------- Reset & transparent page ---------- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: transparent;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* ---------- Main container ---------- */
+.player-card {
+  --accent: #C5B358;
+  --accent-glow: rgba(197, 179, 88, 0.35);
+  --text: #C5B358;
+  --muted: #9aa0b5;
+  --field-bg: rgba(0, 22, 44, 0.92);
+
+  position: fixed;
+  bottom: 40px;
+  left: 40px;
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+
+  animation: slideIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ---------- Video panel ---------- */
+.card-video {
+  position: relative;
+  width: 240px;
+  height: 420px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.card-video video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ---------- Info fields (floating beside video) ---------- */
+.card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 8px;
+}
+
+.number-badge {
+  background: var(--field-bg);
+  color: var(--accent);
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 10px 18px;
+  border-radius: 10px;
+  box-shadow: 0 2px 12px var(--accent-glow);
+  letter-spacing: 1px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.player-name {
+  background: var(--field-bg);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  font-size: 1.8rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 10px 16px;
+  border-radius: 8px;
+  width: fit-content;
+}
+
+/* ---------- Stat grid ---------- */
+.stat-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat {
+  background: var(--field-bg);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.stat-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--accent);
+}
+
+.stat-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ---------- Slide-in animation ---------- */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ---------- Hidden state ---------- */
+.player-card.hidden {
+  animation: slideOut 0.45s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+}
+
+@keyframes slideOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(40px) scale(0.97);
+  }
+}
+
+/* ---------- Fallback when no video ---------- */
+.card-video.no-video {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 13, 26, 0.5);
+  border-radius: 8px;
+}
+
+.card-video.no-video::after {
+  content: "No video";
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ---------- Demo background ---------- */
+body.demo {
+  background: linear-gradient(135deg, #1a1e30 0%, #0f1220 100%);
+}
