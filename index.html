@@ -155,6 +155,15 @@
     };
 
     function applyFieldStyles(styles) {
+      const g = styles._global || {};
+      const gx = g.offsetX || 0;
+      const gy = g.offsetY || 0;
+      const gz = g.zoom || 100;
+      card.style.left = (40 + gx) + "px";
+      card.style.bottom = (40 - gy) + "px";
+      card.style.transform = gz !== 100 ? "scale(" + (gz / 100) + ")" : "";
+      card.style.transformOrigin = "bottom left";
+
       Object.keys(FIELD_MAP).forEach(field => {
         const conf = styles[field] || {};
         const elId = FIELD_MAP[field].el;
