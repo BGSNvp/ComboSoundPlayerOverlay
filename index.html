@@ -11,25 +11,30 @@
   <div id="playerCard" class="player-card" style="display:none;">
     <div class="card-video" id="videoWrap">
       <video id="playerVideo" autoplay muted playsinline></video>
+      <div class="watermark-number" id="watermarkNumber"></div>
+      <div class="number-badge" id="playerNumber"></div>
     </div>
     <div class="card-info">
-      <div class="number-badge" id="playerNumber"></div>
-      <div class="player-name" id="playerName"></div>
+      <div class="player-name" id="playerName">
+        <div class="player-first-name" id="playerFirstName"></div>
+        <div class="player-last-name" id="playerLastName"></div>
+      </div>
       <div class="stat-grid">
         <div class="stat">
-          <span class="stat-label">Grade</span>
           <span class="stat-value" id="playerGrade"></span>
+          <span class="stat-label">Grade</span>
         </div>
         <div class="stat">
-          <span class="stat-label">Height</span>
           <span class="stat-value" id="playerHeight"></span>
+          <span class="stat-label">Height</span>
         </div>
         <div class="stat">
-          <span class="stat-label">Weight</span>
           <span class="stat-value" id="playerWeight"></span>
+          <span class="stat-label">Weight</span>
         </div>
       </div>
     </div>
+    <div class="team-bar"><span>Blue &amp; Gold Sports Network</span></div>
   </div>
 
   <script type="module">
@@ -62,8 +67,14 @@
       const d = snap.data();
       if (!d) return;
 
-      setText("playerName", d.name || "Player Name");
-      setText("playerNumber", "#" + (d.number || "00"));
+      var fullName = d.name || "Player Name";
+      var nameParts = fullName.trim().split(/\s+/);
+      var firstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : "";
+      var lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : fullName;
+      setText("playerFirstName", firstName);
+      setText("playerLastName", lastName);
+      setText("playerNumber", d.number || "00");
+      setText("watermarkNumber", d.number || "00");
       setText("playerGrade", d.grade || "\u2014");
       setText("playerHeight", d.height || "\u2014");
       setText("playerWeight", d.weight || "\u2014");
@@ -128,7 +139,7 @@
 
     function showCard() {
       isVisible = true;
-      card.style.display = "flex";
+      card.style.display = "block";
       card.classList.remove("hidden");
       card.style.animation = "none";
       card.offsetHeight;
@@ -173,8 +184,15 @@
         if (!el || !wrap) return;
 
         wrap.style.display = conf.hidden ? "none" : "";
-        el.style.fontSize = conf.fontSize ? conf.fontSize + "px" : "";
-        el.style.color = conf.color ? conf.color : "";
+        if (field === "name") {
+          var fn = document.getElementById("playerFirstName");
+          var ln = document.getElementById("playerLastName");
+          if (fn) fn.style.color = conf.color ? conf.color : "";
+          if (ln) { ln.style.color = conf.color ? conf.color : ""; ln.style.fontSize = conf.fontSize ? conf.fontSize + "px" : ""; }
+        } else {
+          el.style.fontSize = conf.fontSize ? conf.fontSize + "px" : "";
+          el.style.color = conf.color ? conf.color : "";
+        }
 
         if (conf.offsetX || conf.offsetY) {
           wrap.style.position = "relative";

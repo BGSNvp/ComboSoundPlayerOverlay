@@ -1,9 +1,10 @@
 /* ============================================================
-   Combined Overlay – player card + soundboard audio
-   Player card: vertical green-screen layout with floating info.
-   Soundboard: audio-only (no visual elements).
-   Designed for use as an OBS/YololBox Browser Source (transparent bg).
+   Combined Overlay – ESPN-style Spotlight Card + soundboard audio
+   Vertical card: player video (knees-to-head) on top, info below.
+   Designed for OBS/YololBox Browser Source (transparent bg).
    ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Roboto+Condensed:wght@400;700&display=swap');
 
 /* ---------- Reset & transparent page ---------- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -13,35 +14,48 @@ html, body {
   overflow: hidden;
   width: 100vw;
   height: 100vh;
-  font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Roboto Condensed', 'Segoe UI', system-ui, sans-serif;
 }
 
-/* ---------- Main container ---------- */
+/* ---------- Main card container ---------- */
 .player-card {
   --accent: #C5B358;
   --accent-glow: rgba(197, 179, 88, 0.35);
-  --text: #C5B358;
+  --text: #ffffff;
   --muted: #9aa0b5;
-  --field-bg: rgba(0, 22, 44, 0.92);
+  --card-bg: #001633;
 
   position: fixed;
   bottom: 40px;
   left: 40px;
-  display: flex;
-  align-items: flex-end;
-  gap: 16px;
-
-  animation: slideIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  width: 320px;
+  border-radius: 20px;
+  overflow: hidden;
+  background: linear-gradient(160deg, #001633 0%, #00264d 40%, #001020 100%);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(197, 179, 88, 0.15);
+  animation: cardIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* ---------- Video panel ---------- */
+/* ---------- Video section (top half) ---------- */
 .card-video {
   position: relative;
-  width: 240px;
-  height: 420px;
-  flex-shrink: 0;
+  width: 100%;
+  height: 380px;
   overflow: hidden;
-  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 40%, #002855, #001020);
+}
+
+.card-video::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 100px;
+  background: linear-gradient(transparent, #001633);
+  z-index: 1;
+  pointer-events: none;
 }
 
 .card-video video {
@@ -51,118 +65,202 @@ html, body {
   display: block;
 }
 
-/* ---------- Info fields (floating beside video) ---------- */
-.card-info {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-bottom: 8px;
-}
-
+/* Number badge floating over video */
 .number-badge {
-  background: var(--field-bg);
-  color: var(--accent);
-  font-size: 2.2rem;
-  font-weight: 800;
-  line-height: 1;
-  padding: 10px 18px;
-  border-radius: 10px;
-  box-shadow: 0 2px 12px var(--accent-glow);
-  letter-spacing: 1px;
-  display: inline-block;
-  width: fit-content;
-}
-
-.player-name {
-  background: var(--field-bg);
-  backdrop-filter: blur(8px);
-  color: var(--text);
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 2;
+  background: var(--accent);
+  color: #001633;
+  font-family: 'Oswald', sans-serif;
   font-size: 1.8rem;
-  font-weight: 800;
-  line-height: 1.15;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  padding: 10px 16px;
-  border-radius: 8px;
-  width: fit-content;
-}
-
-/* ---------- Stat grid ---------- */
-.stat-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.stat {
-  background: var(--field-bg);
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 6px 14px;
-  border-radius: 6px;
-  width: fit-content;
-}
-
-.stat-label {
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: var(--accent);
-}
-
-.stat-value {
-  font-size: 1.1rem;
   font-weight: 700;
-  color: var(--text);
-}
-
-/* ---------- Slide-in animation ---------- */
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(40px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-/* ---------- Hidden state ---------- */
-.player-card.hidden {
-  animation: slideOut 0.45s cubic-bezier(0.55, 0, 1, 0.45) forwards;
-}
-
-@keyframes slideOut {
-  from {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(40px) scale(0.97);
-  }
-}
-
-/* ---------- Fallback when no video ---------- */
-.card-video.no-video {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 13, 26, 0.5);
-  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(197, 179, 88, 0.3);
+  line-height: 1;
 }
 
-.card-video.no-video::after {
-  content: "No video";
-  color: var(--muted);
+/* Giant watermark number behind video */
+.watermark-number {
+  position: absolute;
+  right: -10px;
+  bottom: -20px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 200px;
+  font-weight: 700;
+  color: rgba(197, 179, 88, 0.06);
+  line-height: 1;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ---------- Info section (below video) ---------- */
+.card-info {
+  padding: 20px 24px 8px;
+  position: relative;
+}
+
+.card-info::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 24px; right: 24px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+
+.player-position {
+  font-family: 'Oswald', sans-serif;
   font-size: 0.85rem;
-  font-weight: 500;
+  font-weight: 600;
+  color: var(--accent);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 3px;
+  margin-bottom: 2px;
+}
+
+.player-name {
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.player-first-name {
+  font-family: 'Oswald', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 400;
+  color: rgba(255,255,255,0.6);
+  letter-spacing: 4px;
+  line-height: 1.2;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+
+.player-last-name {
+  font-family: 'Oswald', sans-serif;
+  font-size: 3rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 3px;
+  line-height: 1;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+}
+
+/* ---------- Stats grid ---------- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0;
+  background: rgba(255,255,255,0.03);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(197, 179, 88, 0.12);
+}
+
+.stat {
+  text-align: center;
+  padding: 12px 8px;
+  border-right: 1px solid rgba(197, 179, 88, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat:last-child { border-right: none; }
+
+.stat-value {
+  font-family: 'Oswald', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.2;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+.stat-label {
+  font-size: 0.6rem;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+/* ---------- Team bar ---------- */
+.team-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  background: rgba(197, 179, 88, 0.08);
+  border-top: 1px solid rgba(197, 179, 88, 0.1);
+}
+
+.team-bar span {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 3px;
+}
+
+/* ---------- Animations ---------- */
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.player-card.hidden {
+  animation: cardOut 0.45s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+}
+
+@keyframes cardOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.9) translateY(30px);
+  }
+}
+
+/* Shine sweep on entry */
+.player-card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+  animation: shimmer 2s 0.5s ease-out forwards;
+  z-index: 20;
+  pointer-events: none;
+}
+
+@keyframes shimmer {
+  to { left: 200%; }
+}
+
+/* ---------- Fallback when no video ---------- */
+.card-video.no-video video { display: none; }
+.card-video.no-video::before {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at 50% 40%, #002855, #001020);
 }
 
 /* ---------- Demo background ---------- */
