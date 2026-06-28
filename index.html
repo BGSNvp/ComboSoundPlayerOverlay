@@ -194,14 +194,16 @@
           el.style.color = conf.color ? conf.color : "";
         }
 
-        if (conf.offsetX || conf.offsetY) {
-          wrap.style.position = "relative";
-          wrap.style.left = (conf.offsetX || 0) + "px";
-          wrap.style.top = (conf.offsetY || 0) + "px";
-        } else {
-          wrap.style.position = "";
-          wrap.style.left = "";
-          wrap.style.top = "";
+        if (field !== "number") {
+          if (conf.offsetX || conf.offsetY) {
+            wrap.style.position = "relative";
+            wrap.style.left = (conf.offsetX || 0) + "px";
+            wrap.style.top = (conf.offsetY || 0) + "px";
+          } else {
+            wrap.style.position = "";
+            wrap.style.left = "";
+            wrap.style.top = "";
+          }
         }
       });
     }
