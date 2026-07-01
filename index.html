@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="overlay.css" />
 </head>
 <body>
+  <!-- ScoreStream overlay (shown/hidden via Firebase) -->
+  <div id="scorestreamWrap" style="display:none;position:fixed;overflow:hidden;"></div>
+
   <!-- Player card overlay (visual — hidden by default, shows for 7s when triggered) -->
   <div id="playerCard" class="player-card" style="display:none;">
     <div class="card-video" id="videoWrap">
@@ -207,6 +210,39 @@
         }
       });
     }
+
+    /* ========== ScoreStream Overlay ========== */
+    const ssRef = doc(db, "scorestream", "config");
+    const ssWrap = document.getElementById("scorestreamWrap");
+
+    onSnapshot(ssRef, (snap) => {
+      const d = snap.data();
+      if (!d) return;
+      if (d.visible && d.url) {
+        const w = d.width || 1280;
+        const h = d.height || 720;
+        const scale = (d.scale || 100) / 100;
+        const cropT = d.cropTop || 0;
+        const cropB = d.cropBottom || 0;
+        const cropL = d.cropLeft || 0;
+        const cropR = d.cropRight || 0;
+        const cw = (w - cropL - cropR) * scale;
+        const ch = (h - cropT - cropB) * scale;
+        ssWrap.style.width = cw + "px";
+        ssWrap.style.height = ch + "px";
+        ssWrap.style.top = "0";
+        ssWrap.style.left = "0";
+        ssWrap.innerHTML = '<iframe src="' + d.url + '" style="position:absolute;border:none;' +
+          'width:' + w + 'px;height:' + h + 'px;' +
+          'top:' + (-cropT * scale) + 'px;left:' + (-cropL * scale) + 'px;' +
+          'transform:scale(' + scale + ');transform-origin:top left;" ' +
+          'sandbox="allow-scripts allow-same-origin"></iframe>';
+        ssWrap.style.display = "block";
+      } else {
+        ssWrap.style.display = "none";
+        ssWrap.innerHTML = "";
+      }
+    });
 
     /* ========== Soundboard Audio Engine ========== */
     const triggerRef = doc(db, "soundboard", "trigger");
