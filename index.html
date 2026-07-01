@@ -218,7 +218,9 @@
     onSnapshot(ssRef, (snap) => {
       const d = snap.data();
       if (!d) return;
-      if (d.visible && d.url) {
+      const hasEmbed = d.embed && d.embed.trim();
+      const hasUrl = d.url && d.url.trim();
+      if (d.visible && (hasEmbed || hasUrl)) {
         const w = d.width || 1280;
         const h = d.height || 720;
         const scale = (d.scale || 100) / 100;
@@ -232,11 +234,22 @@
         ssWrap.style.height = ch + "px";
         ssWrap.style.top = "0";
         ssWrap.style.left = "0";
-        ssWrap.innerHTML = '<iframe src="' + d.url + '" style="position:absolute;border:none;' +
-          'width:' + w + 'px;height:' + h + 'px;' +
-          'top:' + (-cropT * scale) + 'px;left:' + (-cropL * scale) + 'px;' +
-          'transform:scale(' + scale + ');transform-origin:top left;" ' +
-          'sandbox="allow-scripts allow-same-origin"></iframe>';
+        const iframeStyle = "position:absolute;border:none;" +
+          "width:" + w + "px;height:" + h + "px;" +
+          "top:" + (-cropT * scale) + "px;left:" + (-cropL * scale) + "px;" +
+          "transform:scale(" + scale + ");transform-origin:top left;";
+        if (hasEmbed) {
+          const srcdoc = "<!DOCTYPE html><html><head><meta charset='UTF-8'><style>body{margin:0;overflow:hidden;}</style></head><body>" +
+            d.embed + "</body></html>";
+          const iframe = document.createElement("iframe");
+          iframe.setAttribute("style", iframeStyle);
+          iframe.srcdoc = srcdoc;
+          ssWrap.innerHTML = "";
+          ssWrap.appendChild(iframe);
+        } else {
+          ssWrap.innerHTML = '<iframe src="' + d.url + '" style="' + iframeStyle + '" ' +
+            'sandbox="allow-scripts allow-same-origin"></iframe>';
+        }
         ssWrap.style.display = "block";
       } else {
         ssWrap.style.display = "none";
