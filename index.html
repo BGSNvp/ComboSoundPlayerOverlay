@@ -228,12 +228,14 @@
         const cropB = d.cropBottom || 0;
         const cropL = d.cropLeft || 0;
         const cropR = d.cropRight || 0;
+        const offsetX = d.offsetX || 0;
+        const offsetY = d.offsetY || 0;
         const cw = (w - cropL - cropR) * scale;
         const ch = (h - cropT - cropB) * scale;
         ssWrap.style.width = cw + "px";
         ssWrap.style.height = ch + "px";
-        ssWrap.style.top = "0";
-        ssWrap.style.left = "0";
+        ssWrap.style.top = offsetY + "px";
+        ssWrap.style.left = offsetX + "px";
         const iframeStyle = "position:absolute;border:none;" +
           "width:" + w + "px;height:" + h + "px;" +
           "top:" + (-cropT * scale) + "px;left:" + (-cropL * scale) + "px;" +
