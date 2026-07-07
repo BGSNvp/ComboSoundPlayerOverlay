@@ -265,6 +265,7 @@
     let masterGain = null;
     const bufferCache = new Map();
     const activeSources = new Set();
+    const activeAudioElements = new Set();
     let lastTriggerTs = 0;
 
     function ensureAudioCtx() {
@@ -301,32 +302,48 @@
         const g = audioCtx.createGain();
         g.gain.value = typeof volume === "number" ? volume : 1;
         src.connect(g).connect(masterGain);
-        src.onended = () => activeSources.delete(src);
-        activeSources.add(src);
+        const entry = { source: src, url };
+        src.onended = () => activeSources.delete(entry);
+        activeSources.add(entry);
         src.start(0);
       } catch (e) {
         const a = new Audio(url);
+        const entry = { audio: a, url };
         a.volume = typeof volume === "number" ? volume : 1;
-        a.play().catch(() => {});
+        a.onended = () => activeAudioElements.delete(entry);
+        activeAudioElements.add(entry);
+        a.play().catch(() => activeAudioElements.delete(entry));
       }
     }
 
-    function stopAllSounds() {
-      activeSources.forEach(src => { try { src.stop(); } catch (_) {} });
-      activeSources.clear();
+    function stopAllSounds(url) {
+      activeSources.forEach(entry => {
+        if (!url || entry.url === url) {
+          try { entry.source.stop(); } catch (_) {}
+          activeSources.delete(entry);
+        }
+      });
+      activeAudioElements.forEach(entry => {
+        if (!url || entry.url === url) {
+          try { entry.audio.pause(); entry.audio.currentTime = 0; } catch (_) {}
+          activeAudioElements.delete(entry);
+        }
+      });
     }
 
     onSnapshot(triggerRef, (snap) => {
       const d = snap.data();
-      if (!d || !d.file) return;
+      if (!d) return;
       if (d.ts && d.ts > lastTriggerTs) {
         lastTriggerTs = d.ts;
         if (d.action === "stop") {
-          stopAllSounds();
-        } else {
-          const soundUrl = d.file.startsWith("http") ? d.file : "sounds/" + d.file;
-          playSound(soundUrl, d.volume || 1);
+          const soundUrl = d.file ? (d.file.startsWith("http") ? d.file : "sounds/" + d.file) : "";
+          stopAllSounds(soundUrl);
+          return;
         }
+        if (!d.file) return;
+        const soundUrl = d.file.startsWith("http") ? d.file : "sounds/" + d.file;
+        playSound(soundUrl, d.volume || 1);
       }
     });
 
