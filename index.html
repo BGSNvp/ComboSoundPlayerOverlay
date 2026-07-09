@@ -215,6 +215,32 @@
     const ssRef = doc(db, "scorestream", "config");
     const ssWrap = document.getElementById("scorestreamWrap");
 
+    function scoreStreamEmbedFromUrl(url) {
+      try {
+        const u = new URL(url);
+        if (!u.hostname.endsWith("scorestream.com")) return "";
+        const widgetId = u.searchParams.get("userWidgetId");
+        if (!widgetId) return "";
+        const widgetType = u.pathname.includes("/horz") ? "horzScoreboard" : "scoreboard";
+        return '<div class="scorestream-widget-container" data-ss_widget_type="' + widgetType + '" data-user-widget-id="' + widgetId + '"></div>' +
+          '<script async="async" type="text/javascript" src="https://scorestream.com/apiJsCdn/widgets/embed.js"></' + 'script>';
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function renderDirectScoreStream(target, html) {
+      target.innerHTML = "";
+      const template = document.createElement("template");
+      template.innerHTML = html;
+      template.content.querySelectorAll("script").forEach(script => script.remove());
+      target.appendChild(template.content.cloneNode(true));
+      const script = document.createElement("script");
+      script.async = true;
+      script.src = "https://scorestream.com/apiJsCdn/widgets/embed.js";
+      target.appendChild(script);
+    }
+
     onSnapshot(ssRef, (snap) => {
       const d = snap.data();
       if (!d) return;
@@ -236,20 +262,28 @@
         ssWrap.style.height = ch + "px";
         ssWrap.style.top = offsetY + "px";
         ssWrap.style.left = offsetX + "px";
-        const iframeStyle = "position:absolute;border:none;" +
+        ssWrap.style.zIndex = "10";
+        const contentStyle = "position:absolute;border:none;" +
           "width:" + w + "px;height:" + h + "px;" +
           "top:" + (-cropT * scale) + "px;left:" + (-cropL * scale) + "px;" +
           "transform:scale(" + scale + ");transform-origin:top left;";
-        if (hasEmbed) {
+        const directEmbed = hasEmbed && d.embed.includes("scorestream-widget-container") ? d.embed : (hasUrl ? scoreStreamEmbedFromUrl(d.url) : "");
+        if (directEmbed) {
+          const content = document.createElement("div");
+          content.setAttribute("style", contentStyle);
+          ssWrap.innerHTML = "";
+          ssWrap.appendChild(content);
+          renderDirectScoreStream(content, directEmbed);
+        } else if (hasEmbed) {
           const srcdoc = "<!DOCTYPE html><html><head><meta charset='UTF-8'><style>body{margin:0;overflow:hidden;}</style></head><body>" +
             d.embed + "</body></html>";
           const iframe = document.createElement("iframe");
-          iframe.setAttribute("style", iframeStyle);
+          iframe.setAttribute("style", contentStyle);
           iframe.srcdoc = srcdoc;
           ssWrap.innerHTML = "";
           ssWrap.appendChild(iframe);
         } else {
-          ssWrap.innerHTML = '<iframe src="' + d.url + '" style="' + iframeStyle + '" ' +
+          ssWrap.innerHTML = '<iframe src="' + d.url + '" style="' + contentStyle + '" ' +
             'sandbox="allow-scripts allow-same-origin"></iframe>';
         }
         ssWrap.style.display = "block";
