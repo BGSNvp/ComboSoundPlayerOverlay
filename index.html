@@ -257,6 +257,16 @@
     onSnapshot(ssRef, (snap) => {
       const d = snap.data();
       if (!d) return;
+      const nonce = d.renderNonce ? String(d.renderNonce) : "";
+      const storedNonce = sessionStorage.getItem("scorestreamRenderNonce");
+      if (nonce && storedNonce && nonce !== storedNonce) {
+        sessionStorage.setItem("scorestreamRenderNonce", nonce);
+        const url = new URL(window.location.href);
+        url.searchParams.set("ssr", nonce);
+        window.location.replace(url.toString());
+        return;
+      }
+      if (nonce && !storedNonce) sessionStorage.setItem("scorestreamRenderNonce", nonce);
       const hasEmbed = d.embed && d.embed.trim();
       const hasUrl = d.url && d.url.trim();
       if (d.visible && (hasEmbed || hasUrl)) {
