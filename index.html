@@ -241,6 +241,19 @@
       target.appendChild(script);
     }
 
+    function forceScoreStreamRepaint() {
+      ssWrap.style.willChange = "transform, opacity";
+      ssWrap.style.transform = "translate3d(0,0,0)";
+      ssWrap.style.opacity = "0.999";
+      void ssWrap.offsetHeight;
+      requestAnimationFrame(() => {
+        ssWrap.style.display = "none";
+        void ssWrap.offsetHeight;
+        ssWrap.style.display = "block";
+        ssWrap.style.opacity = "1";
+      });
+    }
+
     onSnapshot(ssRef, (snap) => {
       const d = snap.data();
       if (!d) return;
@@ -287,6 +300,7 @@
             'sandbox="allow-scripts allow-same-origin"></iframe>';
         }
         ssWrap.style.display = "block";
+        forceScoreStreamRepaint();
       } else {
         ssWrap.style.display = "none";
         ssWrap.innerHTML = "";
