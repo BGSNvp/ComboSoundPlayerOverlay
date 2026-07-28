@@ -216,30 +216,12 @@
     const ssWrap = document.getElementById("scorestreamWrap");
     let scoreStreamRetryTimers = [];
 
-    function scoreStreamEmbedFromUrl(url) {
-      try {
-        const u = new URL(url);
-        if (!u.hostname.endsWith("scorestream.com")) return "";
-        const widgetId = u.searchParams.get("userWidgetId");
-        if (!widgetId) return "";
-        const widgetType = u.pathname.includes("/horz") ? "horzScoreboard" : "scoreboard";
-        return '<div class="scorestream-widget-container" data-ss_widget_type="' + widgetType + '" data-user-widget-id="' + widgetId + '"></div>' +
-          '<script async="async" type="text/javascript" src="https://scorestream.com/apiJsCdn/widgets/embed.js"></' + 'script>';
-      } catch (_) {
-        return "";
-      }
-    }
-
-    function renderDirectScoreStream(target, html) {
-      target.innerHTML = "";
-      const template = document.createElement("template");
-      template.innerHTML = html;
-      template.content.querySelectorAll("script").forEach(script => script.remove());
-      target.appendChild(template.content.cloneNode(true));
-      const script = document.createElement("script");
-      script.async = true;
-      script.src = "https://scorestream.com/apiJsCdn/widgets/embed.js";
-      target.appendChild(script);
+    function scoreStreamUrlFromEmbed(embed) {
+      const m = embed.match(/data-user-widget-id=["'](\d+)["']/);
+      if (!m) return "";
+      const horz = /horzScoreboard/.test(embed);
+      if (!horz) return "";
+      return "https://scorestream.com/widgets/scoreboards/horz?userWidgetId=" + m[1];
     }
 
     function clearScoreStreamRetries() {
@@ -247,17 +229,25 @@
       scoreStreamRetryTimers = [];
     }
 
-    function scoreStreamWidgetLoaded(target) {
-      const container = target.querySelector(".scorestream-widget-container");
-      return !!(container && (container.children.length > 0 || container.textContent.trim().length > 0));
+    function bustUrl(url, n) {
+      return url + (url.includes("?") ? "&" : "?") + "_r=" + n;
     }
 
-    function scheduleScoreStreamRetries(target, html) {
+    function renderScoreStreamIframe(src, contentStyle) {
       clearScoreStreamRetries();
-      [2500, 6000, 11000].forEach(delay => {
+      ssWrap.innerHTML = "";
+      const iframe = document.createElement("iframe");
+      iframe.setAttribute("style", contentStyle);
+      iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups");
+      let loaded = false;
+      iframe.addEventListener("load", () => { loaded = true; });
+      iframe.src = src;
+      ssWrap.appendChild(iframe);
+      // Self-heal: if YoloBox never fires load, force-reload the iframe.
+      [2500, 6000, 11000, 20000].forEach(delay => {
         scoreStreamRetryTimers.push(setTimeout(() => {
-          if (!scoreStreamWidgetLoaded(target)) {
-            renderDirectScoreStream(target, html);
+          if (!loaded) {
+            iframe.src = bustUrl(src, Date.now());
             forceScoreStreamRepaint();
           }
         }, delay));
@@ -314,15 +304,11 @@
           "width:" + w + "px;height:" + h + "px;" +
           "top:" + (-cropT * scale) + "px;left:" + (-cropL * scale) + "px;" +
           "transform:scale(" + scale + ");transform-origin:top left;";
-        const directEmbed = hasEmbed && d.embed.includes("scorestream-widget-container") ? d.embed : (hasUrl ? scoreStreamEmbedFromUrl(d.url) : "");
-        if (directEmbed) {
-          const content = document.createElement("div");
-          content.setAttribute("style", contentStyle);
-          ssWrap.innerHTML = "";
-          ssWrap.appendChild(content);
-          renderDirectScoreStream(content, directEmbed);
-          scheduleScoreStreamRetries(content, directEmbed);
+        const iframeUrl = hasUrl ? d.url.trim() : (hasEmbed ? scoreStreamUrlFromEmbed(d.embed) : "");
+        if (iframeUrl) {
+          renderScoreStreamIframe(iframeUrl, contentStyle);
         } else if (hasEmbed) {
+          clearScoreStreamRetries();
           const srcdoc = "<!DOCTYPE html><html><head><meta charset='UTF-8'><style>body{margin:0;overflow:hidden;}</style></head><body>" +
             d.embed + "</body></html>";
           const iframe = document.createElement("iframe");
@@ -330,13 +316,11 @@
           iframe.srcdoc = srcdoc;
           ssWrap.innerHTML = "";
           ssWrap.appendChild(iframe);
-        } else {
-          ssWrap.innerHTML = '<iframe src="' + d.url + '" style="' + contentStyle + '" ' +
-            'sandbox="allow-scripts allow-same-origin"></iframe>';
         }
         ssWrap.style.display = "block";
         forceScoreStreamRepaint();
       } else {
+        clearScoreStreamRetries();
         ssWrap.style.display = "none";
         ssWrap.innerHTML = "";
       }
