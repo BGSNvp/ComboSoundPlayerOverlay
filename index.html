@@ -214,6 +214,7 @@
     /* ========== ScoreStream Overlay ========== */
     const ssRef = doc(db, "scorestream", "config");
     const ssWrap = document.getElementById("scorestreamWrap");
+    let scoreStreamRetryTimers = [];
 
     function scoreStreamEmbedFromUrl(url) {
       try {
@@ -239,6 +240,28 @@
       script.async = true;
       script.src = "https://scorestream.com/apiJsCdn/widgets/embed.js";
       target.appendChild(script);
+    }
+
+    function clearScoreStreamRetries() {
+      scoreStreamRetryTimers.forEach(timer => clearTimeout(timer));
+      scoreStreamRetryTimers = [];
+    }
+
+    function scoreStreamWidgetLoaded(target) {
+      const container = target.querySelector(".scorestream-widget-container");
+      return !!(container && (container.children.length > 0 || container.textContent.trim().length > 0));
+    }
+
+    function scheduleScoreStreamRetries(target, html) {
+      clearScoreStreamRetries();
+      [2500, 6000, 11000].forEach(delay => {
+        scoreStreamRetryTimers.push(setTimeout(() => {
+          if (!scoreStreamWidgetLoaded(target)) {
+            renderDirectScoreStream(target, html);
+            forceScoreStreamRepaint();
+          }
+        }, delay));
+      });
     }
 
     function forceScoreStreamRepaint() {
@@ -267,6 +290,7 @@
         return;
       }
       if (nonce && !storedNonce) sessionStorage.setItem("scorestreamRenderNonce", nonce);
+      clearScoreStreamRetries();
       const hasEmbed = d.embed && d.embed.trim();
       const hasUrl = d.url && d.url.trim();
       if (d.visible && (hasEmbed || hasUrl)) {
@@ -297,6 +321,7 @@
           ssWrap.innerHTML = "";
           ssWrap.appendChild(content);
           renderDirectScoreStream(content, directEmbed);
+          scheduleScoreStreamRetries(content, directEmbed);
         } else if (hasEmbed) {
           const srcdoc = "<!DOCTYPE html><html><head><meta charset='UTF-8'><style>body{margin:0;overflow:hidden;}</style></head><body>" +
             d.embed + "</body></html>";
