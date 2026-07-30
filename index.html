@@ -147,6 +147,12 @@
       card.style.animation = "none";
       card.offsetHeight;
       card.style.animation = "";
+      const videoEl = document.getElementById("playerVideo");
+      if (videoEl && videoEl.getAttribute("src")) {
+        try { videoEl.currentTime = 0; } catch (e) {}
+        const p = videoEl.play();
+        if (p && p.catch) p.catch(() => {});
+      }
     }
 
     function hideCard() {
