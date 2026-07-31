@@ -340,6 +340,7 @@
     const activeSources = new Set();
     const activeAudioElements = new Set();
     let lastTriggerTs = 0;
+    let triggerInitialized = false;
 
     function ensureAudioCtx() {
       if (audioCtx) return;
@@ -407,6 +408,11 @@
     onSnapshot(triggerRef, (snap) => {
       const d = snap.data();
       if (!d) return;
+      if (!triggerInitialized) {
+        triggerInitialized = true;
+        lastTriggerTs = d.ts || 0;
+        return;
+      }
       if (d.ts && d.ts > lastTriggerTs) {
         lastTriggerTs = d.ts;
         if (d.action === "stop") {
