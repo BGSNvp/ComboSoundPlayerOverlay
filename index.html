@@ -341,15 +341,15 @@
 
         // Compressor: lifts quiet sounds and tames loud ones.
         const comp = audioCtx.createDynamicsCompressor();
-        comp.threshold.value = -28;
-        comp.knee.value = 30;
-        comp.ratio.value = 6;
-        comp.attack.value = 0.003;
+        comp.threshold.value = -18;
+        comp.knee.value = 24;
+        comp.ratio.value = 3;
+        comp.attack.value = 0.005;
         comp.release.value = 0.25;
 
         // Makeup gain so the now-compressed signal comes back up in level.
         const makeup = audioCtx.createGain();
-        makeup.gain.value = 1.8;
+        makeup.gain.value = 1.2;
 
         // Brick-wall limiter to guarantee a hard ceiling on peaks.
         const limiter = audioCtx.createDynamicsCompressor();
