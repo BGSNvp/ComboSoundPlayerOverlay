@@ -378,7 +378,15 @@
       return buf;
     }
 
+    const lastPlayedAt = new Map();
+
     async function playSound(url, volume) {
+      // De-bounce rapid duplicate triggers for the same file.
+      const now = Date.now();
+      if (now - (lastPlayedAt.get(url) || 0) < 250) return;
+      lastPlayedAt.set(url, now);
+      // Never stack two copies of the same file — restart instead.
+      stopAllSounds(url);
       ensureAudioCtx();
       if (audioCtx && audioCtx.state === "suspended") {
         try { await audioCtx.resume(); } catch (_) {}
