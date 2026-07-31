@@ -338,7 +338,31 @@
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         masterGain = audioCtx.createGain();
         masterGain.gain.value = 0.9;
-        masterGain.connect(audioCtx.destination);
+
+        // Compressor: lifts quiet sounds and tames loud ones.
+        const comp = audioCtx.createDynamicsCompressor();
+        comp.threshold.value = -28;
+        comp.knee.value = 30;
+        comp.ratio.value = 6;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.25;
+
+        // Makeup gain so the now-compressed signal comes back up in level.
+        const makeup = audioCtx.createGain();
+        makeup.gain.value = 1.8;
+
+        // Brick-wall limiter to guarantee a hard ceiling on peaks.
+        const limiter = audioCtx.createDynamicsCompressor();
+        limiter.threshold.value = -2;
+        limiter.knee.value = 0;
+        limiter.ratio.value = 20;
+        limiter.attack.value = 0.001;
+        limiter.release.value = 0.1;
+
+        masterGain.connect(comp);
+        comp.connect(makeup);
+        makeup.connect(limiter);
+        limiter.connect(audioCtx.destination);
       } catch (e) {
         console.error("AudioContext failed:", e);
       }
