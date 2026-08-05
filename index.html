@@ -10,7 +10,7 @@
   <!-- ScoreStream overlay (shown/hidden via Firebase) -->
   <div id="scorestreamWrap" style="display:none;position:fixed;overflow:hidden;"></div>
 
-  <!-- Player card overlay (visual — hidden by default, shows for 7s when triggered) -->
+  <!-- Player card overlay (visual — hidden by default, shows for 9s when triggered) -->
   <div id="playerCard" class="player-card" style="display:none;">
     <div class="card-video" id="videoWrap">
       <video id="playerVideo" autoplay muted playsinline></video>
@@ -59,7 +59,7 @@
     const card = document.getElementById("playerCard");
     let isVisible = false;
     let autoHideTimer = null;
-    const SHOW_DURATION = 7000;
+    const SHOW_DURATION = 9000;
 
     const params = new URLSearchParams(window.location.search);
     if (params.get("demo") === "1") document.body.classList.add("demo");
