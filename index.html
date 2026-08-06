@@ -246,11 +246,11 @@
       iframe.setAttribute("style", contentStyle);
       iframe.src = src;
       ssWrap.appendChild(iframe);
-      // Self-heal only if the first load never fires. Once it loads
-      // successfully we cancel any pending retries so the scoreboard
-      // doesn't keep refreshing/flickering.
-      iframe.addEventListener("load", clearScoreStreamRetries, { once: true });
-      [3000, 8000, 15000].forEach(delay => {
+      // YoloBox's webview fires the iframe "load" event even when it renders
+      // blank, so we can't detect success — we must reload unconditionally to
+      // force it to paint. Keep the retries few and early so it settles within
+      // a couple of seconds and then stays put (no ongoing flicker).
+      [2000, 5000].forEach(delay => {
         scoreStreamRetryTimers.push(setTimeout(() => {
           iframe.src = bustUrl(src, Date.now());
           forceScoreStreamRepaint();
