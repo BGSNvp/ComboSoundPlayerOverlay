@@ -248,9 +248,9 @@
       ssWrap.appendChild(iframe);
       // YoloBox's webview fires the iframe "load" event even when it renders
       // blank, so we can't detect success — we must reload unconditionally to
-      // force it to paint. Keep the retries few and early so it settles within
-      // a couple of seconds and then stays put (no ongoing flicker).
-      [2000, 5000].forEach(delay => {
+      // force it to paint. In practice the later reloads are what actually get
+      // YoloBox to render, so we keep this spread out; it settles by ~15s.
+      [3000, 8000, 15000].forEach(delay => {
         scoreStreamRetryTimers.push(setTimeout(() => {
           iframe.src = bustUrl(src, Date.now());
           forceScoreStreamRepaint();
