@@ -223,6 +223,43 @@
     let scoreStreamRetryTimers = [];
     let scoreStreamImgTimer = null;
     const SCORESTREAM_IMG_REFRESH_MS = 60000;
+    let ssWasVisible = false;
+    let ssIsImageMode = false;
+    let ssHideTimer = null;
+    const SS_ANIM_MS = 450;
+
+    // Fade + slide the ScoreStream box in/out. Only used in image mode —
+    // animating (opacity/transform) an iframe's ancestor can make YoloBox
+    // render it blank, so iframe mode keeps its instant repaint path.
+    function ssAnimateIn() {
+      if (ssHideTimer) { clearTimeout(ssHideTimer); ssHideTimer = null; }
+      ssWrap.style.willChange = "opacity, transform";
+      ssWrap.style.transition = "none";
+      ssWrap.style.opacity = "0";
+      ssWrap.style.transform = "translateY(16px)";
+      ssWrap.style.display = "block";
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        ssWrap.style.transition = "opacity " + SS_ANIM_MS + "ms ease, transform " + SS_ANIM_MS + "ms ease";
+        ssWrap.style.opacity = "1";
+        ssWrap.style.transform = "translateY(0)";
+      }));
+    }
+
+    function ssAnimateOut() {
+      ssWrap.style.willChange = "opacity, transform";
+      ssWrap.style.transition = "opacity " + SS_ANIM_MS + "ms ease, transform " + SS_ANIM_MS + "ms ease";
+      ssWrap.style.opacity = "0";
+      ssWrap.style.transform = "translateY(16px)";
+      ssHideTimer = setTimeout(() => {
+        ssWrap.style.display = "none";
+        ssWrap.innerHTML = "";
+        ssWrap.style.transition = "none";
+        ssWrap.style.transform = "none";
+        ssWrap.style.opacity = "1";
+        ssWrap.style.willChange = "auto";
+        ssHideTimer = null;
+      }, SS_ANIM_MS + 30);
+    }
 
     function scoreStreamUrlFromEmbed(embed) {
       const m = embed.match(/data-user-widget-id=["'](\d+)["']/);
@@ -335,7 +372,9 @@
           scaleStyle;
         const iframeUrl = hasUrl ? d.url.trim() : (hasEmbed ? scoreStreamUrlFromEmbed(d.embed) : "");
         const service = (d.renderService || "").trim();
-        if (service && iframeUrl) {
+        const isImage = !!(service && iframeUrl);
+        ssIsImageMode = isImage;
+        if (isImage) {
           renderScoreStreamImage(service, iframeUrl, w, h, contentStyle);
         } else if (iframeUrl) {
           renderScoreStreamIframe(iframeUrl, contentStyle);
@@ -349,12 +388,35 @@
           ssWrap.innerHTML = "";
           ssWrap.appendChild(iframe);
         }
-        ssWrap.style.display = "block";
-        forceScoreStreamRepaint();
+        if (isImage) {
+          // Animate only on the hidden -> shown transition, not on every
+          // config re-render while already showing.
+          if (!ssWasVisible) {
+            ssAnimateIn();
+          } else {
+            if (ssHideTimer) { clearTimeout(ssHideTimer); ssHideTimer = null; }
+            ssWrap.style.display = "block";
+            ssWrap.style.opacity = "1";
+            ssWrap.style.transform = "none";
+          }
+        } else {
+          if (ssHideTimer) { clearTimeout(ssHideTimer); ssHideTimer = null; }
+          ssWrap.style.transition = "none";
+          ssWrap.style.transform = "none";
+          ssWrap.style.opacity = "1";
+          ssWrap.style.display = "block";
+          forceScoreStreamRepaint();
+        }
+        ssWasVisible = true;
       } else {
         clearScoreStreamRetries();
-        ssWrap.style.display = "none";
-        ssWrap.innerHTML = "";
+        if (ssWasVisible && ssIsImageMode) {
+          ssAnimateOut();
+        } else {
+          ssWrap.style.display = "none";
+          ssWrap.innerHTML = "";
+        }
+        ssWasVisible = false;
       }
     });
 
