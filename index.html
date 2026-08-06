@@ -251,6 +251,13 @@
         encodeURIComponent(widgetUrl) + "&w=" + w + "&h=" + h;
       const img = document.createElement("img");
       img.setAttribute("style", contentStyle);
+      // The free render host cold-starts after idle, so the first request can
+      // fail while it wakes. Retry a few times, backing off, until it loads.
+      img.onerror = () => {
+        scoreStreamRetryTimers.push(setTimeout(() => {
+          img.src = bustUrl(base, Date.now());
+        }, 6000));
+      };
       img.src = bustUrl(base, Date.now());
       ssWrap.appendChild(img);
       scoreStreamImgTimer = setInterval(() => {
