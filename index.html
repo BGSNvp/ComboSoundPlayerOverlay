@@ -259,15 +259,14 @@
     }
 
     function forceScoreStreamRepaint() {
-      ssWrap.style.willChange = "transform, opacity";
-      ssWrap.style.transform = "translate3d(0,0,0)";
-      ssWrap.style.opacity = "0.999";
+      // Repaint by toggling display only. We intentionally avoid CSS
+      // transforms / will-change on the wrapper: webviews (YoloBox) often
+      // fail to composite an iframe that lives inside a transformed layer,
+      // rendering it blank.
+      ssWrap.style.display = "none";
       void ssWrap.offsetHeight;
       requestAnimationFrame(() => {
-        ssWrap.style.display = "none";
-        void ssWrap.offsetHeight;
         ssWrap.style.display = "block";
-        ssWrap.style.opacity = "1";
       });
     }
 
@@ -294,10 +293,16 @@
         ssWrap.style.top = offsetY + "px";
         ssWrap.style.left = offsetX + "px";
         ssWrap.style.zIndex = "10";
+        // Only apply a CSS transform when actually scaling. A transform on
+        // the iframe (or an ancestor) can make webviews like YoloBox render
+        // it blank, so we skip it entirely at 100%.
+        const scaleStyle = scale === 1
+          ? ""
+          : "transform:scale(" + scale + ");transform-origin:top left;";
         const contentStyle = "position:absolute;border:none;" +
           "width:" + w + "px;height:" + h + "px;" +
           "top:" + (-cropT * scale) + "px;left:" + (-cropL * scale) + "px;" +
-          "transform:scale(" + scale + ");transform-origin:top left;";
+          scaleStyle;
         const iframeUrl = hasUrl ? d.url.trim() : (hasEmbed ? scoreStreamUrlFromEmbed(d.embed) : "");
         if (iframeUrl) {
           renderScoreStreamIframe(iframeUrl, contentStyle);
