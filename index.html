@@ -61,8 +61,13 @@
     let autoHideTimer = null;
     let wantVisible = false;
     let pendingShow = false;
+    let currentId = "";
+    let cycleMode = false;
+    let transitionToken = 0;
     const SHOW_DURATION = 9000;
     const BUFFER_TIMEOUT = 3000;
+    const SWAP_FADE_MS = 260;
+    const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
     const params = new URLSearchParams(window.location.search);
     if (params.get("demo") === "1") document.body.classList.add("demo");
@@ -73,10 +78,39 @@
       const d = snap.data();
       if (!d) return;
 
-      var fullName = d.name || "Player Name";
-      var nameParts = fullName.trim().split(/\s+/);
-      var firstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : "";
-      var lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : fullName;
+      const newId = d.id || "";
+      wantVisible = !!d.visible;
+      cycleMode = !!d.cycle;
+      applyFieldStyles(d.styles || {});
+
+      if (!wantVisible) {
+        applyContent(d);
+        currentId = newId;
+        if (isVisible) { clearAutoHide(); hideCard(); }
+        return;
+      }
+
+      if (!isVisible) {
+        // Hidden -> shown: buffer, then reveal.
+        applyContent(d);
+        currentId = newId;
+        triggerShow();
+      } else if (newId !== currentId) {
+        // Player switched while the card is up: cross-fade to the new one.
+        currentId = newId;
+        transitionTo(d);
+      } else {
+        // Same player, in-place refresh (style/video tweak).
+        applyContent(d);
+        if (!cycleMode) scheduleAutoHide();
+      }
+    });
+
+    function applyContent(d) {
+      const fullName = (d.name || "Player Name").trim();
+      const nameParts = fullName.split(/\s+/);
+      const firstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : "";
+      const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : fullName;
       setText("playerFirstName", firstName);
       setText("playerLastName", lastName);
       setText("playerNumber", d.number || "00");
@@ -84,22 +118,32 @@
       setText("playerGrade", d.grade || "\u2014");
       setText("playerHeight", d.height || "\u2014");
       setText("playerWeight", d.weight || "\u2014");
-
       updateVideo(d.video || "");
-      applyFieldStyles(d.styles || {});
+    }
 
-      wantVisible = !!d.visible;
-
-      if (wantVisible && !isVisible) {
-        triggerShow();
-      } else if (wantVisible && isVisible) {
-        // Re-triggered while already showing — restart the timer
-        scheduleAutoHide();
-      } else if (!wantVisible && isVisible) {
-        clearAutoHide();
-        hideCard();
+    // Fade the card out, swap to the new player once buffered, fade back in.
+    // Uses inline opacity (with the entrance animation disabled) because the
+    // cardIn animation's forwards-fill would otherwise override a CSS class.
+    async function transitionTo(d) {
+      const tok = ++transitionToken;
+      card.style.animation = "none";
+      card.style.transition = "opacity " + SWAP_FADE_MS + "ms ease";
+      card.style.opacity = "0";
+      await delay(SWAP_FADE_MS);
+      if (tok !== transitionToken) return; // superseded by a newer switch
+      applyContent(d);
+      const videoEl = document.getElementById("playerVideo");
+      await waitForVideoBuffered(videoEl);
+      if (tok !== transitionToken) return;
+      if (!wantVisible) return;
+      if (videoEl && videoEl.getAttribute("src")) {
+        try { videoEl.currentTime = 0; } catch (e) {}
+        const p = videoEl.play();
+        if (p && p.catch) p.catch(() => {});
       }
-    });
+      card.style.opacity = "1";
+      if (!cycleMode) scheduleAutoHide();
+    }
 
     // Buffer the video before revealing the card so it doesn't stutter on
     // start. Resolves once there's enough buffered to play through, or after
@@ -131,7 +175,9 @@
       // Aborted (hidden) while we were buffering, or already showing.
       if (!wantVisible || isVisible) return;
       showCard();
-      scheduleAutoHide();
+      // In cycle mode the controller drives advancing/hiding, so don't
+      // auto-hide between cards.
+      if (!cycleMode) scheduleAutoHide();
     }
 
     function scheduleAutoHide() {
@@ -180,6 +226,9 @@
 
     function showCard() {
       isVisible = true;
+      // Clear any leftover inline fade state from a cross-fade swap.
+      card.style.transition = "";
+      card.style.opacity = "";
       card.style.display = "block";
       card.classList.remove("hidden");
       card.style.animation = "none";
@@ -195,6 +244,11 @@
 
     function hideCard() {
       isVisible = false;
+      transitionToken++;
+      // Reset inline fade state so the .hidden exit animation can run.
+      card.style.transition = "";
+      card.style.opacity = "";
+      card.style.animation = "";
       card.classList.add("hidden");
       setTimeout(() => { card.style.display = "none"; }, 500);
     }
