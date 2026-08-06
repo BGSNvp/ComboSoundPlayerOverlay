@@ -13,7 +13,7 @@
   <!-- Player card overlay (visual — hidden by default, shows for 9s when triggered) -->
   <div id="playerCard" class="player-card" style="display:none;">
     <div class="card-video" id="videoWrap">
-      <video id="playerVideo" autoplay muted playsinline></video>
+      <video id="playerVideo" autoplay muted playsinline preload="auto"></video>
       <div class="watermark-number" id="watermarkNumber"></div>
       <div class="number-badge" id="playerNumber"></div>
     </div>
@@ -59,7 +59,10 @@
     const card = document.getElementById("playerCard");
     let isVisible = false;
     let autoHideTimer = null;
+    let wantVisible = false;
+    let pendingShow = false;
     const SHOW_DURATION = 9000;
+    const BUFFER_TIMEOUT = 3000;
 
     const params = new URLSearchParams(window.location.search);
     if (params.get("demo") === "1") document.body.classList.add("demo");
@@ -85,17 +88,51 @@
       updateVideo(d.video || "");
       applyFieldStyles(d.styles || {});
 
-      if (d.visible && !isVisible) {
-        showCard();
+      wantVisible = !!d.visible;
+
+      if (wantVisible && !isVisible) {
+        triggerShow();
+      } else if (wantVisible && isVisible) {
+        // Re-triggered while already showing — restart the timer
         scheduleAutoHide();
-      } else if (d.visible && isVisible) {
-        // Re-triggered while already showing — restart the 7s timer
-        scheduleAutoHide();
-      } else if (!d.visible && isVisible) {
+      } else if (!wantVisible && isVisible) {
         clearAutoHide();
         hideCard();
       }
     });
+
+    // Buffer the video before revealing the card so it doesn't stutter on
+    // start. Resolves once there's enough buffered to play through, or after
+    // a fallback timeout so a slow/uncooperative source never hangs the card.
+    function waitForVideoBuffered(videoEl) {
+      return new Promise((resolve) => {
+        if (!videoEl || !videoEl.getAttribute("src")) return resolve();
+        if (videoEl.readyState >= 4) return resolve();
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          videoEl.removeEventListener("canplaythrough", finish);
+          clearTimeout(t);
+          resolve();
+        };
+        const t = setTimeout(finish, BUFFER_TIMEOUT);
+        videoEl.addEventListener("canplaythrough", finish);
+        try { videoEl.load(); } catch (e) {}
+      });
+    }
+
+    async function triggerShow() {
+      if (pendingShow) return;
+      pendingShow = true;
+      const videoEl = document.getElementById("playerVideo");
+      await waitForVideoBuffered(videoEl);
+      pendingShow = false;
+      // Aborted (hidden) while we were buffering, or already showing.
+      if (!wantVisible || isVisible) return;
+      showCard();
+      scheduleAutoHide();
+    }
 
     function scheduleAutoHide() {
       clearAutoHide();
@@ -123,6 +160,7 @@
           v.autoplay = true;
           v.muted = true;
           v.playsInline = true;
+          v.preload = "auto";
           wrap.prepend(v);
           wrap.classList.remove("no-video");
           v.src = src;
