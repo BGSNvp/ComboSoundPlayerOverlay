@@ -244,18 +244,16 @@
       ssWrap.innerHTML = "";
       const iframe = document.createElement("iframe");
       iframe.setAttribute("style", contentStyle);
-      iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups");
-      let loaded = false;
-      iframe.addEventListener("load", () => { loaded = true; });
       iframe.src = src;
       ssWrap.appendChild(iframe);
-      // Self-heal: if YoloBox never fires load, force-reload the iframe.
-      [2500, 6000, 11000, 20000].forEach(delay => {
+      // YoloBox's webview often loads the iframe blank on the first try but
+      // still fires the "load" event, so we can't rely on it. Reload the
+      // iframe a few times unconditionally (cache-busted) to give the
+      // scoreboard several fresh chances to render.
+      [3000, 8000, 15000].forEach(delay => {
         scoreStreamRetryTimers.push(setTimeout(() => {
-          if (!loaded) {
-            iframe.src = bustUrl(src, Date.now());
-            forceScoreStreamRepaint();
-          }
+          iframe.src = bustUrl(src, Date.now());
+          forceScoreStreamRepaint();
         }, delay));
       });
     }
