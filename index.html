@@ -221,6 +221,8 @@
     const ssRef = doc(db, "scorestream", "config");
     const ssWrap = document.getElementById("scorestreamWrap");
     let scoreStreamRetryTimers = [];
+    let scoreStreamImgTimer = null;
+    const SCORESTREAM_IMG_REFRESH_MS = 60000;
 
     function scoreStreamUrlFromEmbed(embed) {
       const m = embed.match(/data-user-widget-id=["'](\d+)["']/);
@@ -233,6 +235,27 @@
     function clearScoreStreamRetries() {
       scoreStreamRetryTimers.forEach(timer => clearTimeout(timer));
       scoreStreamRetryTimers = [];
+      if (scoreStreamImgTimer) {
+        clearInterval(scoreStreamImgTimer);
+        scoreStreamImgTimer = null;
+      }
+    }
+
+    // Image mode: display the scoreboard as a same-origin PNG from the render
+    // service. Webviews (YoloBox) render <img> reliably, unlike a cross-origin
+    // iframe. Refreshes on a slow interval so the score stays current.
+    function renderScoreStreamImage(service, widgetUrl, w, h, contentStyle) {
+      clearScoreStreamRetries();
+      ssWrap.innerHTML = "";
+      const base = service.replace(/\/+$/, "") + "/shot?url=" +
+        encodeURIComponent(widgetUrl) + "&w=" + w + "&h=" + h;
+      const img = document.createElement("img");
+      img.setAttribute("style", contentStyle);
+      img.src = bustUrl(base, Date.now());
+      ssWrap.appendChild(img);
+      scoreStreamImgTimer = setInterval(() => {
+        img.src = bustUrl(base, Date.now());
+      }, SCORESTREAM_IMG_REFRESH_MS);
     }
 
     function bustUrl(url, n) {
@@ -304,7 +327,10 @@
           "top:" + (-cropT * scale) + "px;left:" + (-cropL * scale) + "px;" +
           scaleStyle;
         const iframeUrl = hasUrl ? d.url.trim() : (hasEmbed ? scoreStreamUrlFromEmbed(d.embed) : "");
-        if (iframeUrl) {
+        const service = (d.renderService || "").trim();
+        if (service && iframeUrl) {
+          renderScoreStreamImage(service, iframeUrl, w, h, contentStyle);
+        } else if (iframeUrl) {
           renderScoreStreamIframe(iframeUrl, contentStyle);
         } else if (hasEmbed) {
           clearScoreStreamRetries();
