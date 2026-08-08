@@ -10,10 +10,10 @@
   <!-- ScoreStream overlay (shown/hidden via Firebase) -->
   <div id="scorestreamWrap" style="display:none;position:fixed;overflow:hidden;"></div>
 
-  <!-- Player card overlay (visual — hidden by default, shows for 7s when triggered) -->
+  <!-- Player card overlay (visual — hidden by default, shows for 9s when triggered) -->
   <div id="playerCard" class="player-card" style="display:none;">
     <div class="card-video" id="videoWrap">
-      <video id="playerVideo" autoplay muted playsinline></video>
+      <video id="playerVideo" autoplay muted playsinline preload="auto"></video>
       <div class="watermark-number" id="watermarkNumber"></div>
       <div class="number-badge" id="playerNumber"></div>
     </div>
@@ -59,7 +59,15 @@
     const card = document.getElementById("playerCard");
     let isVisible = false;
     let autoHideTimer = null;
-    const SHOW_DURATION = 7000;
+    let wantVisible = false;
+    let pendingShow = false;
+    let currentId = "";
+    let cycleMode = false;
+    let transitionToken = 0;
+    const SHOW_DURATION = 9000;
+    const BUFFER_TIMEOUT = 3000;
+    const SWAP_FADE_MS = 260;
+    const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
     const params = new URLSearchParams(window.location.search);
     if (params.get("demo") === "1") document.body.classList.add("demo");
@@ -70,10 +78,39 @@
       const d = snap.data();
       if (!d) return;
 
-      var fullName = d.name || "Player Name";
-      var nameParts = fullName.trim().split(/\s+/);
-      var firstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : "";
-      var lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : fullName;
+      const newId = d.id || "";
+      wantVisible = !!d.visible;
+      cycleMode = !!d.cycle;
+      applyFieldStyles(d.styles || {});
+
+      if (!wantVisible) {
+        applyContent(d);
+        currentId = newId;
+        if (isVisible) { clearAutoHide(); hideCard(); }
+        return;
+      }
+
+      if (!isVisible) {
+        // Hidden -> shown: buffer, then reveal.
+        applyContent(d);
+        currentId = newId;
+        triggerShow();
+      } else if (newId !== currentId) {
+        // Player switched while the card is up: cross-fade to the new one.
+        currentId = newId;
+        transitionTo(d);
+      } else {
+        // Same player, in-place refresh (style/video tweak).
+        applyContent(d);
+        if (!cycleMode) scheduleAutoHide();
+      }
+    });
+
+    function applyContent(d) {
+      const fullName = (d.name || "Player Name").trim();
+      const nameParts = fullName.split(/\s+/);
+      const firstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : "";
+      const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : fullName;
       setText("playerFirstName", firstName);
       setText("playerLastName", lastName);
       setText("playerNumber", d.number || "00");
@@ -81,21 +118,67 @@
       setText("playerGrade", d.grade || "\u2014");
       setText("playerHeight", d.height || "\u2014");
       setText("playerWeight", d.weight || "\u2014");
-
       updateVideo(d.video || "");
-      applyFieldStyles(d.styles || {});
+    }
 
-      if (d.visible && !isVisible) {
-        showCard();
-        scheduleAutoHide();
-      } else if (d.visible && isVisible) {
-        // Re-triggered while already showing — restart the 7s timer
-        scheduleAutoHide();
-      } else if (!d.visible && isVisible) {
-        clearAutoHide();
-        hideCard();
+    // Fade the card out, swap to the new player once buffered, fade back in.
+    // Uses inline opacity (with the entrance animation disabled) because the
+    // cardIn animation's forwards-fill would otherwise override a CSS class.
+    async function transitionTo(d) {
+      const tok = ++transitionToken;
+      card.style.animation = "none";
+      card.style.transition = "opacity " + SWAP_FADE_MS + "ms ease";
+      card.style.opacity = "0";
+      await delay(SWAP_FADE_MS);
+      if (tok !== transitionToken) return; // superseded by a newer switch
+      applyContent(d);
+      const videoEl = document.getElementById("playerVideo");
+      await waitForVideoBuffered(videoEl);
+      if (tok !== transitionToken) return;
+      if (!wantVisible) return;
+      if (videoEl && videoEl.getAttribute("src")) {
+        try { videoEl.currentTime = 0; } catch (e) {}
+        const p = videoEl.play();
+        if (p && p.catch) p.catch(() => {});
       }
-    });
+      card.style.opacity = "1";
+      if (!cycleMode) scheduleAutoHide();
+    }
+
+    // Buffer the video before revealing the card so it doesn't stutter on
+    // start. Resolves once there's enough buffered to play through, or after
+    // a fallback timeout so a slow/uncooperative source never hangs the card.
+    function waitForVideoBuffered(videoEl) {
+      return new Promise((resolve) => {
+        if (!videoEl || !videoEl.getAttribute("src")) return resolve();
+        if (videoEl.readyState >= 4) return resolve();
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          videoEl.removeEventListener("canplaythrough", finish);
+          clearTimeout(t);
+          resolve();
+        };
+        const t = setTimeout(finish, BUFFER_TIMEOUT);
+        videoEl.addEventListener("canplaythrough", finish);
+        try { videoEl.load(); } catch (e) {}
+      });
+    }
+
+    async function triggerShow() {
+      if (pendingShow) return;
+      pendingShow = true;
+      const videoEl = document.getElementById("playerVideo");
+      await waitForVideoBuffered(videoEl);
+      pendingShow = false;
+      // Aborted (hidden) while we were buffering, or already showing.
+      if (!wantVisible || isVisible) return;
+      showCard();
+      // In cycle mode the controller drives advancing/hiding, so don't
+      // auto-hide between cards.
+      if (!cycleMode) scheduleAutoHide();
+    }
 
     function scheduleAutoHide() {
       clearAutoHide();
@@ -123,6 +206,7 @@
           v.autoplay = true;
           v.muted = true;
           v.playsInline = true;
+          v.preload = "auto";
           wrap.prepend(v);
           wrap.classList.remove("no-video");
           v.src = src;
@@ -142,6 +226,9 @@
 
     function showCard() {
       isVisible = true;
+      // Clear any leftover inline fade state from a cross-fade swap.
+      card.style.transition = "";
+      card.style.opacity = "";
       card.style.display = "block";
       card.classList.remove("hidden");
       card.style.animation = "none";
@@ -157,6 +244,11 @@
 
     function hideCard() {
       isVisible = false;
+      transitionToken++;
+      // Reset inline fade state so the .hidden exit animation can run.
+      card.style.transition = "";
+      card.style.opacity = "";
+      card.style.animation = "";
       card.classList.add("hidden");
       setTimeout(() => { card.style.display = "none"; }, 500);
     }
@@ -221,6 +313,45 @@
     const ssRef = doc(db, "scorestream", "config");
     const ssWrap = document.getElementById("scorestreamWrap");
     let scoreStreamRetryTimers = [];
+    let scoreStreamImgTimer = null;
+    const SCORESTREAM_IMG_REFRESH_MS = 60000;
+    let ssWasVisible = false;
+    let ssIsImageMode = false;
+    let ssHideTimer = null;
+    const SS_ANIM_MS = 450;
+
+    // Fade + slide the ScoreStream box in/out. Only used in image mode —
+    // animating (opacity/transform) an iframe's ancestor can make YoloBox
+    // render it blank, so iframe mode keeps its instant repaint path.
+    function ssAnimateIn() {
+      if (ssHideTimer) { clearTimeout(ssHideTimer); ssHideTimer = null; }
+      ssWrap.style.willChange = "opacity, transform";
+      ssWrap.style.transition = "none";
+      ssWrap.style.opacity = "0";
+      ssWrap.style.transform = "translateY(16px)";
+      ssWrap.style.display = "block";
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        ssWrap.style.transition = "opacity " + SS_ANIM_MS + "ms ease, transform " + SS_ANIM_MS + "ms ease";
+        ssWrap.style.opacity = "1";
+        ssWrap.style.transform = "translateY(0)";
+      }));
+    }
+
+    function ssAnimateOut() {
+      ssWrap.style.willChange = "opacity, transform";
+      ssWrap.style.transition = "opacity " + SS_ANIM_MS + "ms ease, transform " + SS_ANIM_MS + "ms ease";
+      ssWrap.style.opacity = "0";
+      ssWrap.style.transform = "translateY(16px)";
+      ssHideTimer = setTimeout(() => {
+        ssWrap.style.display = "none";
+        ssWrap.innerHTML = "";
+        ssWrap.style.transition = "none";
+        ssWrap.style.transform = "none";
+        ssWrap.style.opacity = "1";
+        ssWrap.style.willChange = "auto";
+        ssHideTimer = null;
+      }, SS_ANIM_MS + 30);
+    }
 
     function scoreStreamUrlFromEmbed(embed) {
       const m = embed.match(/data-user-widget-id=["'](\d+)["']/);
@@ -233,6 +364,34 @@
     function clearScoreStreamRetries() {
       scoreStreamRetryTimers.forEach(timer => clearTimeout(timer));
       scoreStreamRetryTimers = [];
+      if (scoreStreamImgTimer) {
+        clearInterval(scoreStreamImgTimer);
+        scoreStreamImgTimer = null;
+      }
+    }
+
+    // Image mode: display the scoreboard as a same-origin PNG from the render
+    // service. Webviews (YoloBox) render <img> reliably, unlike a cross-origin
+    // iframe. Refreshes on a slow interval so the score stays current.
+    function renderScoreStreamImage(service, widgetUrl, w, h, contentStyle) {
+      clearScoreStreamRetries();
+      ssWrap.innerHTML = "";
+      const base = service.replace(/\/+$/, "") + "/shot?url=" +
+        encodeURIComponent(widgetUrl) + "&w=" + w + "&h=" + h;
+      const img = document.createElement("img");
+      img.setAttribute("style", contentStyle);
+      // The free render host cold-starts after idle, so the first request can
+      // fail while it wakes. Retry a few times, backing off, until it loads.
+      img.onerror = () => {
+        scoreStreamRetryTimers.push(setTimeout(() => {
+          img.src = bustUrl(base, Date.now());
+        }, 6000));
+      };
+      img.src = bustUrl(base, Date.now());
+      ssWrap.appendChild(img);
+      scoreStreamImgTimer = setInterval(() => {
+        img.src = bustUrl(base, Date.now());
+      }, SCORESTREAM_IMG_REFRESH_MS);
     }
 
     function bustUrl(url, n) {
@@ -244,32 +403,29 @@
       ssWrap.innerHTML = "";
       const iframe = document.createElement("iframe");
       iframe.setAttribute("style", contentStyle);
-      iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups");
-      let loaded = false;
-      iframe.addEventListener("load", () => { loaded = true; });
       iframe.src = src;
       ssWrap.appendChild(iframe);
-      // Self-heal: if YoloBox never fires load, force-reload the iframe.
-      [2500, 6000, 11000, 20000].forEach(delay => {
+      // YoloBox's webview fires the iframe "load" event even when it renders
+      // blank, so we can't detect success — we must reload unconditionally to
+      // force it to paint. In practice the later reloads are what actually get
+      // YoloBox to render, so we keep this spread out; it settles by ~15s.
+      [3000, 8000, 15000].forEach(delay => {
         scoreStreamRetryTimers.push(setTimeout(() => {
-          if (!loaded) {
-            iframe.src = bustUrl(src, Date.now());
-            forceScoreStreamRepaint();
-          }
+          iframe.src = bustUrl(src, Date.now());
+          forceScoreStreamRepaint();
         }, delay));
       });
     }
 
     function forceScoreStreamRepaint() {
-      ssWrap.style.willChange = "transform, opacity";
-      ssWrap.style.transform = "translate3d(0,0,0)";
-      ssWrap.style.opacity = "0.999";
+      // Repaint by toggling display only. We intentionally avoid CSS
+      // transforms / will-change on the wrapper: webviews (YoloBox) often
+      // fail to composite an iframe that lives inside a transformed layer,
+      // rendering it blank.
+      ssWrap.style.display = "none";
       void ssWrap.offsetHeight;
       requestAnimationFrame(() => {
-        ssWrap.style.display = "none";
-        void ssWrap.offsetHeight;
         ssWrap.style.display = "block";
-        ssWrap.style.opacity = "1";
       });
     }
 
@@ -296,12 +452,23 @@
         ssWrap.style.top = offsetY + "px";
         ssWrap.style.left = offsetX + "px";
         ssWrap.style.zIndex = "10";
+        // Only apply a CSS transform when actually scaling. A transform on
+        // the iframe (or an ancestor) can make webviews like YoloBox render
+        // it blank, so we skip it entirely at 100%.
+        const scaleStyle = scale === 1
+          ? ""
+          : "transform:scale(" + scale + ");transform-origin:top left;";
         const contentStyle = "position:absolute;border:none;" +
           "width:" + w + "px;height:" + h + "px;" +
           "top:" + (-cropT * scale) + "px;left:" + (-cropL * scale) + "px;" +
-          "transform:scale(" + scale + ");transform-origin:top left;";
+          scaleStyle;
         const iframeUrl = hasUrl ? d.url.trim() : (hasEmbed ? scoreStreamUrlFromEmbed(d.embed) : "");
-        if (iframeUrl) {
+        const service = (d.renderService || "").trim();
+        const isImage = !!(service && iframeUrl);
+        ssIsImageMode = isImage;
+        if (isImage) {
+          renderScoreStreamImage(service, iframeUrl, w, h, contentStyle);
+        } else if (iframeUrl) {
           renderScoreStreamIframe(iframeUrl, contentStyle);
         } else if (hasEmbed) {
           clearScoreStreamRetries();
@@ -313,12 +480,35 @@
           ssWrap.innerHTML = "";
           ssWrap.appendChild(iframe);
         }
-        ssWrap.style.display = "block";
-        forceScoreStreamRepaint();
+        if (isImage) {
+          // Animate only on the hidden -> shown transition, not on every
+          // config re-render while already showing.
+          if (!ssWasVisible) {
+            ssAnimateIn();
+          } else {
+            if (ssHideTimer) { clearTimeout(ssHideTimer); ssHideTimer = null; }
+            ssWrap.style.display = "block";
+            ssWrap.style.opacity = "1";
+            ssWrap.style.transform = "none";
+          }
+        } else {
+          if (ssHideTimer) { clearTimeout(ssHideTimer); ssHideTimer = null; }
+          ssWrap.style.transition = "none";
+          ssWrap.style.transform = "none";
+          ssWrap.style.opacity = "1";
+          ssWrap.style.display = "block";
+          forceScoreStreamRepaint();
+        }
+        ssWasVisible = true;
       } else {
         clearScoreStreamRetries();
-        ssWrap.style.display = "none";
-        ssWrap.innerHTML = "";
+        if (ssWasVisible && ssIsImageMode) {
+          ssAnimateOut();
+        } else {
+          ssWrap.style.display = "none";
+          ssWrap.innerHTML = "";
+        }
+        ssWasVisible = false;
       }
     });
 
