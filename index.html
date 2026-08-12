@@ -273,8 +273,9 @@
       const gz = g.zoom || 100;
       card.style.left = (40 + gx) + "px";
       card.style.bottom = (40 - gy) + "px";
-      card.style.transform = gz !== 100 ? "scale(" + (gz / 100) + ")" : "";
-      card.style.transformOrigin = "bottom left";
+      // Zoom rides on --zoom (the card's transform and its keyframes both use
+      // it) so the entrance animation's forwards-fill can't drop the scale.
+      card.style.setProperty("--zoom", String(gz / 100));
 
       Object.keys(FIELD_MAP).forEach(field => {
         const conf = styles[field] || {};
