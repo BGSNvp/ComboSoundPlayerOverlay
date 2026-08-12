@@ -19,6 +19,7 @@ html, body {
 
 /* ---------- Main card container ---------- */
 .player-card {
+  --zoom: 1;
   --accent: #C5B358;
   --accent-glow: rgba(197, 179, 88, 0.35);
   --text: #ffffff;
@@ -33,6 +34,8 @@ html, body {
   overflow: hidden;
   background: linear-gradient(160deg, #001633 0%, #00264d 40%, #001020 100%);
   box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(197, 179, 88, 0.15);
+  transform: scale(var(--zoom));
+  transform-origin: bottom left;
   animation: cardIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
@@ -214,14 +217,16 @@ html, body {
 }
 
 /* ---------- Animations ---------- */
+/* Keyframes fold in --zoom so the animation's forwards-fill can't clobber the
+   card's zoom scale. */
 @keyframes cardIn {
   from {
     opacity: 0;
-    transform: scale(0.9) translateY(30px);
+    transform: scale(calc(var(--zoom) * 0.9)) translateY(30px);
   }
   to {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: scale(var(--zoom)) translateY(0);
   }
 }
 
@@ -232,11 +237,11 @@ html, body {
 @keyframes cardOut {
   from {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: scale(var(--zoom)) translateY(0);
   }
   to {
     opacity: 0;
-    transform: scale(0.9) translateY(30px);
+    transform: scale(calc(var(--zoom) * 0.9)) translateY(30px);
   }
 }
 
