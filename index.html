@@ -67,7 +67,18 @@
     const SHOW_DURATION = 9000;
     const BUFFER_TIMEOUT = 3000;
     const SWAP_FADE_MS = 260;
+    const STALL_CHECK_MS = 400;
+    const MAX_VIDEO_CACHE = 12;
     const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    let currentVideoUrl = "";
+    let stallTimer = null;
+    let lastVideoTime = -1;
+    let stallStrikes = 0;
+    // Logical video URL -> blob: URL once fully downloaded (null while in flight).
+    const videoBlobCache = new Map();
+
+    const initialVideo = document.getElementById("playerVideo");
+    if (initialVideo) attachStallRecovery(initialVideo);
 
     const params = new URLSearchParams(window.location.search);
     if (params.get("demo") === "1") document.body.classList.add("demo");
@@ -140,6 +151,7 @@
         try { videoEl.currentTime = 0; } catch (e) {}
         const p = videoEl.play();
         if (p && p.catch) p.catch(() => {});
+        startStallWatch();
       }
       card.style.opacity = "1";
       if (!cycleMode) scheduleAutoHide();
@@ -196,10 +208,40 @@
       }
     }
 
+    // Download the clip once and keep it in memory, so replays and cycles
+    // stream from RAM instead of the network (mid-clip stalls).
+    function cacheVideoBlob(url) {
+      if (!url || videoBlobCache.has(url)) return;
+      videoBlobCache.set(url, null);
+      fetch(url)
+        .then((r) => (r.ok ? r.blob() : null))
+        .then((blob) => {
+          if (!blob) { videoBlobCache.delete(url); return; }
+          if (videoBlobCache.size > MAX_VIDEO_CACHE) {
+            const oldest = videoBlobCache.keys().next().value;
+            const oldUrl = videoBlobCache.get(oldest);
+            if (oldUrl) URL.revokeObjectURL(oldUrl);
+            videoBlobCache.delete(oldest);
+          }
+          videoBlobCache.set(url, URL.createObjectURL(blob));
+        })
+        .catch(() => videoBlobCache.delete(url));
+    }
+
+    function playableVideoSrc(url) {
+      return videoBlobCache.get(url) || url;
+    }
+
+    function hasVideo() {
+      return !!currentVideoUrl;
+    }
+
     function updateVideo(src) {
       const videoEl = document.getElementById("playerVideo");
       const wrap = document.getElementById("videoWrap");
       if (src) {
+        cacheVideoBlob(src);
+        const playSrc = playableVideoSrc(src);
         if (!videoEl) {
           const v = document.createElement("video");
           v.id = "playerVideo";
@@ -209,18 +251,73 @@
           v.preload = "auto";
           wrap.prepend(v);
           wrap.classList.remove("no-video");
-          v.src = src;
+          v.src = playSrc;
           v.load();
+          attachStallRecovery(v);
+        } else if (src !== currentVideoUrl || videoEl.src !== playSrc) {
+          videoEl.src = playSrc;
+          videoEl.load();
+          wrap.classList.remove("no-video");
         } else {
-          if (videoEl.getAttribute("src") !== src) {
-            videoEl.src = src;
-            videoEl.load();
-          }
           wrap.classList.remove("no-video");
         }
+        currentVideoUrl = src;
       } else {
         if (videoEl) videoEl.removeAttribute("src");
+        currentVideoUrl = "";
         wrap.classList.add("no-video");
+      }
+    }
+
+    // A muted autoplay clip can stall mid-play in webviews (YoloBox) without
+    // firing an error. Re-kick playback, and nudge past the stall point if it
+    // doesn't recover.
+    function attachStallRecovery(videoEl) {
+      const kick = () => {
+        if (!isVisible || videoEl.ended) return;
+        const p = videoEl.play();
+        if (p && p.catch) p.catch(() => {});
+      };
+      videoEl.addEventListener("stalled", kick);
+      videoEl.addEventListener("waiting", kick);
+      videoEl.addEventListener("pause", kick);
+    }
+
+    function startStallWatch() {
+      stopStallWatch();
+      lastVideoTime = -1;
+      stallStrikes = 0;
+      stallTimer = setInterval(() => {
+        const videoEl = document.getElementById("playerVideo");
+        if (!videoEl || !isVisible || !hasVideo()) return;
+        if (videoEl.ended) return;
+        const t = videoEl.currentTime;
+        if (videoEl.paused) {
+          const p = videoEl.play();
+          if (p && p.catch) p.catch(() => {});
+          return;
+        }
+        if (lastVideoTime >= 0 && t <= lastVideoTime + 0.01) {
+          stallStrikes++;
+          const p = videoEl.play();
+          if (p && p.catch) p.catch(() => {});
+          if (stallStrikes >= 2) {
+            const dur = isFinite(videoEl.duration) ? videoEl.duration : 0;
+            const target = dur ? Math.min(t + 0.15, dur - 0.05) : t + 0.15;
+            if (target > t) { try { videoEl.currentTime = target; } catch (e) {} }
+            stallStrikes = 0;
+          }
+        } else {
+          stallStrikes = 0;
+        }
+        lastVideoTime = t;
+      }, STALL_CHECK_MS);
+    }
+
+    function stopStallWatch() {
+      if (stallTimer) {
+        clearInterval(stallTimer);
+        stallTimer = null;
       }
     }
 
@@ -239,11 +336,13 @@
         try { videoEl.currentTime = 0; } catch (e) {}
         const p = videoEl.play();
         if (p && p.catch) p.catch(() => {});
+        startStallWatch();
       }
     }
 
     function hideCard() {
       isVisible = false;
+      stopStallWatch();
       transitionToken++;
       // Reset inline fade state so the .hidden exit animation can run.
       card.style.transition = "";
