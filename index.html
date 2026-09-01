@@ -68,17 +68,29 @@
     const BUFFER_TIMEOUT = 3000;
     const SWAP_FADE_MS = 260;
     const STALL_CHECK_MS = 400;
-    const MAX_VIDEO_CACHE = 12;
+    const MAX_CACHE_BYTES = 60 * 1024 * 1024;
+    const DOWNLOAD_TIMEOUT = 12000;
     const delay = (ms) => new Promise((r) => setTimeout(r, ms));
     let currentVideoUrl = "";
     let stallTimer = null;
     let lastVideoTime = -1;
     let stallStrikes = 0;
-    // Logical video URL -> blob: URL once fully downloaded (null while in flight).
+    // Logical video URL -> blob: URL once fully downloaded.
     const videoBlobCache = new Map();
+    // Logical video URL -> in-flight download promise.
+    const videoBlobPending = new Map();
+    const videoBlobBytes = new Map();
+    let cacheBytes = 0;
 
     const initialVideo = document.getElementById("playerVideo");
     if (initialVideo) attachStallRecovery(initialVideo);
+
+    // Warm the clip cache from the roster so even a player's first showing
+    // plays from memory.
+    onSnapshot(doc(db, "playerOverlay", "roster"), (snap) => {
+      const players = (snap.data() || {}).players || [];
+      prefetchVideos(players.map((p) => p.video).filter(Boolean));
+    });
 
     const params = new URLSearchParams(window.location.search);
     if (params.get("demo") === "1") document.body.classList.add("demo");
@@ -144,7 +156,7 @@
       if (tok !== transitionToken) return; // superseded by a newer switch
       applyContent(d);
       const videoEl = document.getElementById("playerVideo");
-      await waitForVideoBuffered(videoEl);
+      await prepareVideo(videoEl);
       if (tok !== transitionToken) return;
       if (!wantVisible) return;
       if (videoEl && videoEl.getAttribute("src")) {
@@ -182,7 +194,7 @@
       if (pendingShow) return;
       pendingShow = true;
       const videoEl = document.getElementById("playerVideo");
-      await waitForVideoBuffered(videoEl);
+      await prepareVideo(videoEl);
       pendingShow = false;
       // Aborted (hidden) while we were buffering, or already showing.
       if (!wantVisible || isVisible) return;
@@ -208,28 +220,73 @@
       }
     }
 
-    // Download the clip once and keep it in memory, so replays and cycles
-    // stream from RAM instead of the network (mid-clip stalls).
-    function cacheVideoBlob(url) {
-      if (!url || videoBlobCache.has(url)) return;
-      videoBlobCache.set(url, null);
-      fetch(url)
+    // Download the whole clip into memory once, so playback never hits the
+    // network mid-clip. Resolves to a blob: URL, or null if it can't be had.
+    function ensureVideoBlob(url) {
+      if (!url) return Promise.resolve(null);
+      const cached = videoBlobCache.get(url);
+      if (cached) return Promise.resolve(cached);
+      const inFlight = videoBlobPending.get(url);
+      if (inFlight) return inFlight;
+      const p = fetch(url)
         .then((r) => (r.ok ? r.blob() : null))
         .then((blob) => {
-          if (!blob) { videoBlobCache.delete(url); return; }
-          if (videoBlobCache.size > MAX_VIDEO_CACHE) {
-            const oldest = videoBlobCache.keys().next().value;
-            const oldUrl = videoBlobCache.get(oldest);
-            if (oldUrl) URL.revokeObjectURL(oldUrl);
-            videoBlobCache.delete(oldest);
-          }
-          videoBlobCache.set(url, URL.createObjectURL(blob));
+          if (!blob) return null;
+          const objectUrl = URL.createObjectURL(blob);
+          videoBlobCache.set(url, objectUrl);
+          videoBlobBytes.set(url, blob.size);
+          cacheBytes += blob.size;
+          evictVideoBlobs();
+          return objectUrl;
         })
-        .catch(() => videoBlobCache.delete(url));
+        .catch(() => null)
+        .then((result) => {
+          videoBlobPending.delete(url);
+          return result;
+        });
+      videoBlobPending.set(url, p);
+      return p;
     }
 
-    function playableVideoSrc(url) {
-      return videoBlobCache.get(url) || url;
+    // Keep memory bounded: drop the oldest clips (never the one on screen)
+    // until the cache is back under budget.
+    function evictVideoBlobs() {
+      for (const url of videoBlobCache.keys()) {
+        if (cacheBytes <= MAX_CACHE_BYTES) return;
+        if (url === currentVideoUrl) continue;
+        URL.revokeObjectURL(videoBlobCache.get(url));
+        videoBlobCache.delete(url);
+        cacheBytes -= videoBlobBytes.get(url) || 0;
+        videoBlobBytes.delete(url);
+      }
+    }
+
+    // Point the element at the fully downloaded clip, falling back to
+    // streaming the network URL if the download is too slow or fails.
+    async function prepareVideo(videoEl) {
+      if (!videoEl || !currentVideoUrl) return;
+      const url = currentVideoUrl;
+      const blobUrl = await Promise.race([
+        ensureVideoBlob(url),
+        delay(DOWNLOAD_TIMEOUT).then(() => null)
+      ]);
+      if (url !== currentVideoUrl) return; // player switched while downloading
+      const src = blobUrl || url;
+      if (videoEl.src !== src) {
+        videoEl.src = src;
+        videoEl.load();
+      }
+      await waitForVideoBuffered(videoEl);
+    }
+
+    // Download roster clips one at a time so prefetching never competes with
+    // the clip that's about to play.
+    async function prefetchVideos(urls) {
+      for (const url of urls) {
+        if (cacheBytes >= MAX_CACHE_BYTES) return;
+        if (videoBlobCache.has(url)) continue;
+        await ensureVideoBlob(url);
+      }
     }
 
     function hasVideo() {
@@ -237,31 +294,32 @@
     }
 
     function updateVideo(src) {
-      const videoEl = document.getElementById("playerVideo");
+      let videoEl = document.getElementById("playerVideo");
       const wrap = document.getElementById("videoWrap");
       if (src) {
-        cacheVideoBlob(src);
-        const playSrc = playableVideoSrc(src);
         if (!videoEl) {
-          const v = document.createElement("video");
-          v.id = "playerVideo";
-          v.autoplay = true;
-          v.muted = true;
-          v.playsInline = true;
-          v.preload = "auto";
-          wrap.prepend(v);
-          wrap.classList.remove("no-video");
-          v.src = playSrc;
-          v.load();
-          attachStallRecovery(v);
-        } else if (src !== currentVideoUrl || videoEl.src !== playSrc) {
-          videoEl.src = playSrc;
-          videoEl.load();
-          wrap.classList.remove("no-video");
-        } else {
-          wrap.classList.remove("no-video");
+          videoEl = document.createElement("video");
+          videoEl.id = "playerVideo";
+          videoEl.autoplay = true;
+          videoEl.muted = true;
+          videoEl.playsInline = true;
+          videoEl.preload = "auto";
+          wrap.prepend(videoEl);
+          attachStallRecovery(videoEl);
         }
-        currentVideoUrl = src;
+        wrap.classList.remove("no-video");
+        if (src !== currentVideoUrl) {
+          currentVideoUrl = src;
+          const cached = videoBlobCache.get(src);
+          if (cached) {
+            videoEl.src = cached;
+            videoEl.load();
+          } else {
+            // src is set by prepareVideo once the download finishes.
+            videoEl.removeAttribute("src");
+            ensureVideoBlob(src);
+          }
+        }
       } else {
         if (videoEl) videoEl.removeAttribute("src");
         currentVideoUrl = "";
