@@ -97,6 +97,30 @@
     const accentParam = params.get("accent");
     if (accentParam) card.style.setProperty("--accent", "#" + accentParam.replace(/^#/, ""));
 
+    // ?debug=1 shows live video playback state on screen for field diagnosis.
+    if (params.get("debug") === "1") {
+      const hud = document.createElement("pre");
+      hud.style.cssText = "position:fixed;top:8px;right:8px;z-index:9999;margin:0;padding:6px 10px;" +
+        "background:rgba(0,0,0,.75);color:#0f0;font:14px/1.3 monospace;pointer-events:none";
+      document.body.appendChild(hud);
+      let frames = 0;
+      setInterval(() => {
+        const v = document.getElementById("playerVideo");
+        if (!v) { hud.textContent = "no video element"; return; }
+        const q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
+        const src = v.currentSrc || "";
+        hud.textContent =
+          "src: " + (src.startsWith("blob:") ? "memory" : src ? "network" : "none") + "\n" +
+          "time: " + v.currentTime.toFixed(2) + " / " + (isFinite(v.duration) ? v.duration.toFixed(2) : "?") + "\n" +
+          "paused: " + v.paused + "  ended: " + v.ended + "\n" +
+          "readyState: " + v.readyState + "  network: " + v.networkState + "\n" +
+          (q ? "frames: " + q.totalVideoFrames + "  dropped: " + q.droppedVideoFrames + "  fps: " + (q.totalVideoFrames - frames) * 2 + "\n" : "") +
+          "error: " + (v.error ? v.error.code : "none") + "\n" +
+          "visible: " + isVisible + "  zoom: " + card.style.getPropertyValue("--zoom");
+        if (q) frames = q.totalVideoFrames;
+      }, 500);
+    }
+
     onSnapshot(liveRef, (snap) => {
       const d = snap.data();
       if (!d) return;
@@ -385,7 +409,7 @@
       card.style.transition = "";
       card.style.opacity = "";
       card.style.display = "block";
-      card.classList.remove("hidden");
+      card.classList.remove("hidden", "settled");
       card.style.animation = "none";
       card.offsetHeight;
       card.style.animation = "";
@@ -406,9 +430,14 @@
       card.style.transition = "";
       card.style.opacity = "";
       card.style.animation = "";
+      card.classList.remove("settled");
       card.classList.add("hidden");
       setTimeout(() => { card.style.display = "none"; }, 500);
     }
+
+    card.addEventListener("animationend", (e) => {
+      if (e.animationName === "cardIn") card.classList.add("settled");
+    });
 
     function setText(id, value) {
       const el = document.getElementById(id);
@@ -428,11 +457,13 @@
       const gx = g.offsetX || 0;
       const gy = g.offsetY || 0;
       const gz = g.zoom || 100;
-      card.style.left = (40 + gx) + "px";
-      card.style.bottom = (40 - gy) + "px";
-      // Zoom rides on --zoom (the card's transform and its keyframes both use
-      // it) so the entrance animation's forwards-fill can't drop the scale.
-      card.style.setProperty("--zoom", String(gz / 100));
+      const z = gz / 100;
+      // CSS zoom scales the card's own offsets too; divide to keep them in
+      // screen pixels.
+      card.style.left = ((40 + gx) / z) + "px";
+      card.style.bottom = ((40 - gy) / z) + "px";
+      card.style.setProperty("--slide", (480 / z) + "px");
+      card.style.setProperty("--zoom", String(z));
 
       Object.keys(FIELD_MAP).forEach(field => {
         const conf = styles[field] || {};
