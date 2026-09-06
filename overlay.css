@@ -36,9 +36,17 @@ html, body {
   overflow: hidden;
   background: linear-gradient(160deg, #001633 0%, #00264d 40%, #001020 100%);
   box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(197, 179, 88, 0.15);
-  transform: translateX(0) scale(var(--zoom));
-  transform-origin: bottom left;
+  /* Zoom uses CSS zoom (layout), not transform scale: some webviews stop
+     repainting a <video> that sits inside a transformed layer. */
+  zoom: var(--zoom);
   animation: cardIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Once the entrance finishes, drop the animation so the card (and its video)
+   is no longer composited under a transform while at rest. */
+.player-card.settled {
+  animation: none;
+  transform: none;
 }
 
 /* ---------- Video section (top half) ---------- */
@@ -219,17 +227,15 @@ html, body {
 }
 
 /* ---------- Animations ---------- */
-/* Slides in from the right. Keyframes fold in --zoom so the animation's
-   forwards-fill can't clobber the card's zoom scale, and translate comes
-   before scale so the slide distance stays in screen pixels. */
+/* Slides in from the right. */
 @keyframes cardIn {
   from {
     opacity: 0;
-    transform: translateX(var(--slide)) scale(var(--zoom));
+    transform: translateX(var(--slide));
   }
   to {
     opacity: 1;
-    transform: translateX(0) scale(var(--zoom));
+    transform: translateX(0);
   }
 }
 
@@ -240,11 +246,11 @@ html, body {
 @keyframes cardOut {
   from {
     opacity: 1;
-    transform: translateX(0) scale(var(--zoom));
+    transform: translateX(0);
   }
   to {
     opacity: 0;
-    transform: translateX(var(--slide)) scale(var(--zoom));
+    transform: translateX(var(--slide));
   }
 }
 
