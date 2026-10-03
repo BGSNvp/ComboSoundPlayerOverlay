@@ -1,0 +1,17 @@
+{
+  "name": "scorestream-render",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "ISC",
+  "description": "Renders a ScoreStream widget to a PNG so constrained webviews (YoloBox) can show it as a same-origin image.",
+  "dependencies": {
+    "express": "^5.2.1",
+    "puppeteer": "^24.43.1"
+  }
+}
